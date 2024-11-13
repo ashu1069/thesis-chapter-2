@@ -1,0 +1,182 @@
+import torch
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from vaccine_prioritization.models.tft import TemporalFusionTransformer
+from vaccine_prioritization.utils.loss import custom_loss
+
+# Configuration dictionary
+config = {
+    'static_variables': [
+        'Endemic_Potential_R0', 
+        'Endemic_Potential_Duration', 
+        'Demography_Urban_Rural_Split', 
+        'Demography_Population_Density', 
+        'Environmental_Index', 
+        'Socio_economic_Gini_Index', 
+        'Socio_economic_Poverty_Rates',
+        'Communication_Affordability',
+        'Socio_economic_GDP_per_capita',
+        'Socio_economic_Employment_Rates',
+        'Socio_economic_Education_Levels'
+    ],
+    'historical_variables': [
+        'Healthcare_Index_Tier_X_hospitals',
+        'Healthcare_Index_Workforce_capacity',
+        'Healthcare_Index_Bed_availability_per_capita',
+        'Healthcare_Index_Expenditure_per_capita',
+        'Immunization_Coverage',
+        'Economic_Index_Budget_allocation_per_capita',
+        'Economic_Index_Fraction_of_total_budget',
+        'Political_Stability_Index'
+    ],
+    'future_variables': [
+        'Frequency_of_outbreaks',
+        'Magnitude_of_outbreaks_Deaths',
+        'Magnitude_of_outbreaks_Infected',
+        'Magnitude_of_outbreaks_Severity_Index',
+        'Security_and_Conflict_Index'
+    ],
+    'static_input_sizes': {
+        'Endemic_Potential_R0': 1,
+        'Endemic_Potential_Duration': 1,
+        'Demography_Urban_Rural_Split': 1,
+        'Demography_Population_Density': 1,
+        'Environmental_Index': 1,
+        'Socio_economic_Gini_Index': 1,
+        'Socio_economic_Poverty_Rates': 1,
+        'Communication_Affordability': 1,
+        'Socio_economic_GDP_per_capita': 1,
+        'Socio_economic_Employment_Rates': 1,
+        'Socio_economic_Education_Levels': 1
+    },
+    'historical_input_sizes': {
+        'Healthcare_Index_Tier_X_hospitals': 1,
+        'Healthcare_Index_Workforce_capacity': 1,
+        'Healthcare_Index_Bed_availability_per_capita': 1,
+        'Healthcare_Index_Expenditure_per_capita': 1,
+        'Immunization_Coverage': 1,
+        'Economic_Index_Budget_allocation_per_capita': 1,
+        'Economic_Index_Fraction_of_total_budget': 1,
+        'Political_Stability_Index': 1
+    },
+    'future_input_sizes': {
+        'Frequency_of_outbreaks': 1,
+        'Magnitude_of_outbreaks_Deaths': 1,
+        'Magnitude_of_outbreaks_Infected': 1,
+        'Magnitude_of_outbreaks_Severity_Index': 1,
+        'Security_and_Conflict_Index': 1
+    },
+    'hidden_size': 64,
+    'lstm_hidden_size': 32,
+    'ff_hidden_size': 128,  # Add this line
+    'dropout': 0.1,
+    'nhead': 4,
+    'num_lstm_layers': 1,
+    'num_attention_layers': 1,
+    'num_layers': 1,
+    'output_size': 4,  # Number of objectives
+    'objective_weights': [0.30, 0.30, 0.25, 0.15],  # Weights for the objectives
+    'feature_objective_mapping': {
+        'Maximize Health Impact': ['Endemic_Potential_R0', 'Endemic_Potential_Duration', 'Healthcare_Index_Tier_X_hospitals', 'Healthcare_Index_Workforce_capacity', 'Healthcare_Index_Bed_availability_per_capita', 'Immunization_Coverage', 'Frequency_of_outbreaks', 'Magnitude_of_outbreaks_Deaths', 'Magnitude_of_outbreaks_Infected', 'Magnitude_of_outbreaks_Severity_Index'],
+        'Maximize Value for Money': ['Economic_Index_Budget_allocation_per_capita', 'Economic_Index_Fraction_of_total_budget', 'Healthcare_Index_Expenditure_per_capita', 'Socio_economic_GDP_per_capita', 'Socio_economic_Employment_Rates', 'Socio_economic_Education_Levels'],
+        'Reinforce Financial Sustainability': ['Economic_Index_Budget_allocation_per_capita', 'Economic_Index_Fraction_of_total_budget', 'Healthcare_Index_Expenditure_per_capita', 'Socio_economic_GDP_per_capita', 'Socio_economic_Employment_Rates', 'Socio_economic_Poverty_Rates', 'Political_Stability_Index', 'Communication_Affordability'],
+        'Support Countries with the Greatest Needs': ['Demography_Urban_Rural_Split', 'Demography_Population_Density', 'Environmental_Index', 'Socio_economic_Gini_Index', 'Socio_economic_Poverty_Rates', 'Healthcare_Index_Bed_availability_per_capita', 'Political_Stability_Index', 'Security_and_Conflict_Index']
+    },
+    'context_size': 64,  # Size of the context vector (usually same as hidden_size)
+}
+
+# Calculate total input sizes after config creation
+config['input_size_total'] = {
+    'static': sum(config['static_input_sizes'].values()),
+    'historical': sum(config['historical_input_sizes'].values()),
+    'future': sum(config['future_input_sizes'].values())
+}
+
+# Example data (updated to match config)
+x_static = {
+    k: torch.randn(100, config['static_input_sizes'][k]) 
+    for k in config['static_variables']
+}
+
+x_historical = {
+    k: torch.randn(100, 10, config['historical_input_sizes'][k])  # 10 time steps
+    for k in config['historical_variables']
+}
+
+x_future = {
+    k: torch.randn(100, 5, config['future_input_sizes'][k])  # 5 future time steps
+    for k in config['future_variables']
+}
+
+y = torch.randn(100, 4)  # 100 samples, 4 objectives
+
+# Example validation data (replace with your actual data)
+x_static_val = {k: v[:20] for k, v in x_static.items()}
+x_historical_val = {k: v[:20] for k, v in x_historical.items()}
+x_future_val = {k: v[:20] for k, v in x_future.items()}
+y_val = y[:20]
+
+# Create DataLoader
+dataset = TensorDataset(
+    torch.cat([x_static[k] for k in config['static_variables']], dim=1),
+    torch.cat([x_historical[k] for k in config['historical_variables']], dim=2),
+    torch.cat([x_future[k] for k in config['future_variables']], dim=2),
+    y
+)
+train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
+
+# Create validation DataLoader
+val_dataset = TensorDataset(
+    torch.cat([x_static_val[k] for k in config['static_variables']], dim=1),
+    torch.cat([x_historical_val[k] for k in config['historical_variables']], dim=2),
+    torch.cat([x_future_val[k] for k in config['future_variables']], dim=2),
+    y_val
+)
+val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
+
+# Initialize model, optimizer
+model = TemporalFusionTransformer(config)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training loop
+num_epochs = 50
+for epoch in range(num_epochs):
+    model.train()
+    for batch in train_loader:
+        x_static, x_historical, x_future, y = batch
+        x = {
+            'static': {k: x_static[:, i:i+config['static_input_sizes'][k]] for i, k in enumerate(config['static_variables'])},
+            'historical': {k: x_historical[:, :, i:i+1] for i, k in enumerate(config['historical_variables'])},
+            'future': {k: x_future[:, :, i:i+1] for i, k in enumerate(config['future_variables'])}
+        }
+        optimizer.zero_grad()
+        output = model(x)
+        loss = custom_loss(
+            model_outputs=output,
+            targets=y,
+            objective_weights=config['objective_weights']
+        )
+        loss.backward()
+        optimizer.step()
+    
+    # Validation loop
+    model.eval()
+    with torch.no_grad():
+        val_loss = 0
+        for batch in val_loader:
+            x_static, x_historical, x_future, y = batch
+            x = {
+                'static': {k: x_static[:, i:i+config['static_input_sizes'][k]] for i, k in enumerate(config['static_variables'])},
+                'historical': {k: x_historical[:, :, i:i+1] for i, k in enumerate(config['historical_variables'])},
+                'future': {k: x_future[:, :, i:i+1] for i, k in enumerate(config['future_variables'])}
+            }
+            output = model(x)
+            val_loss += custom_loss(
+                model_outputs=output,
+                targets=y,
+                objective_weights=config['objective_weights']
+            ).item()
+        val_loss /= len(val_loader)
+        print(f'Epoch {epoch}, Validation Loss: {val_loss}')
+    
+    print(f'Epoch {epoch}, Training Loss: {loss.item()}')
