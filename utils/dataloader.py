@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -87,9 +91,9 @@ config = DataConfig(
 )
 
 # Define file paths
-static_file = "static_data_COVID-19.csv"
-known_file = "time_dependent_known_data_COVID-19.csv"
-unknown_file = "time_dependent_unknown_data_COVID-19.csv"
+static_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "static_data_COVID-19.csv")
+known_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "time_dependent_known_data_COVID-19.csv")
+unknown_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "time_dependent_unknown_data_COVID-19.csv")
 
 # Create dataset
 dataset = DiseaseDataset(static_file, known_file, unknown_file, config)
