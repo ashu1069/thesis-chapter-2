@@ -18,7 +18,7 @@ class DiseaseDataset(Dataset):
         self.transform = transform
         
         # Normalize categorical data
-        self.static_data['Transmission Mode'] = self.static_data['Transmission Mode'].astype('category').cat.codes
+        self.static_data['Transmission_Mode'] = self.static_data['Transmission_Mode'].astype('category').cat.codes
 
         # Repeat static data to match the length of time-dependent data
         self.static_data = pd.concat([self.static_data]*len(self.known_data), ignore_index=True)
