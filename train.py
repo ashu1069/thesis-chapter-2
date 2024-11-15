@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
@@ -66,23 +70,43 @@ config = {
         'Magnitude_of_outbreaks_Severity_Index': 1,
         'Security_and_Conflict_Index': 1
     },
-    'hidden_size': 64,
-    'lstm_hidden_size': 32,
-    'ff_hidden_size': 128,  # Add this line
+    'hidden_size': 16,
+    'lstm_hidden_size': 16,
+    'ff_hidden_size': 16,
     'dropout': 0.1,
     'nhead': 4,
     'num_lstm_layers': 1,
     'num_attention_layers': 1,
     'num_layers': 1,
-    'output_size': 4,  # Number of objectives
-    'objective_weights': [0.30, 0.30, 0.25, 0.15],  # Weights for the objectives
+    'output_size': 4,
+    'objective_weights': [0.30, 0.30, 0.25, 0.15],
     'feature_objective_mapping': {
         'Maximize Health Impact': ['Endemic_Potential_R0', 'Endemic_Potential_Duration', 'Healthcare_Index_Tier_X_hospitals', 'Healthcare_Index_Workforce_capacity', 'Healthcare_Index_Bed_availability_per_capita', 'Immunization_Coverage', 'Frequency_of_outbreaks', 'Magnitude_of_outbreaks_Deaths', 'Magnitude_of_outbreaks_Infected', 'Magnitude_of_outbreaks_Severity_Index'],
         'Maximize Value for Money': ['Economic_Index_Budget_allocation_per_capita', 'Economic_Index_Fraction_of_total_budget', 'Healthcare_Index_Expenditure_per_capita', 'Socio_economic_GDP_per_capita', 'Socio_economic_Employment_Rates', 'Socio_economic_Education_Levels'],
         'Reinforce Financial Sustainability': ['Economic_Index_Budget_allocation_per_capita', 'Economic_Index_Fraction_of_total_budget', 'Healthcare_Index_Expenditure_per_capita', 'Socio_economic_GDP_per_capita', 'Socio_economic_Employment_Rates', 'Socio_economic_Poverty_Rates', 'Political_Stability_Index', 'Communication_Affordability'],
         'Support Countries with the Greatest Needs': ['Demography_Urban_Rural_Split', 'Demography_Population_Density', 'Environmental_Index', 'Socio_economic_Gini_Index', 'Socio_economic_Poverty_Rates', 'Healthcare_Index_Bed_availability_per_capita', 'Political_Stability_Index', 'Security_and_Conflict_Index']
     },
-    'context_size': 64,  # Size of the context vector (usually same as hidden_size)
+    'context_size': 16,
+    'variable_embedding_size': 16,
+    'embedding_size': 16,
+    'grn_hidden': 16,
+    'static_embedding_size': 16,
+    'temporal_embedding_size': 16,
+    'time_embedding_size': 16,
+    'categorical_embedding_size': 16,
+    'gating_size': 16,
+    'historical_length': 5,
+    'forecast_length': 5,
+}
+
+# Add these dimension calculations to config
+config['total_embedding_size'] = config['hidden_size']
+config['input_embedding_size'] = config['hidden_size']
+
+# Add sequence information to config
+config['sequence_lengths'] = {
+    'historical': 5,
+    'future': 5
 }
 
 # Calculate total input sizes after config creation
@@ -99,12 +123,12 @@ x_static = {
 }
 
 x_historical = {
-    k: torch.randn(100, 10, config['historical_input_sizes'][k])  # 10 time steps
+    k: torch.randn(100, 5, config['historical_input_sizes'][k])  # 5 time steps
     for k in config['historical_variables']
 }
 
 x_future = {
-    k: torch.randn(100, 5, config['future_input_sizes'][k])  # 5 future time steps
+    k: torch.randn(100, 5, config['future_input_sizes'][k])  # 5 time steps
     for k in config['future_variables']
 }
 
@@ -143,12 +167,35 @@ num_epochs = 50
 for epoch in range(num_epochs):
     model.train()
     for batch in train_loader:
-        x_static, x_historical, x_future, y = batch
+        x_static_batch, x_historical_batch, x_future_batch, y = batch
+        
         x = {
-            'static': {k: x_static[:, i:i+config['static_input_sizes'][k]] for i, k in enumerate(config['static_variables'])},
-            'historical': {k: x_historical[:, :, i:i+1] for i, k in enumerate(config['historical_variables'])},
-            'future': {k: x_future[:, :, i:i+1] for i, k in enumerate(config['future_variables'])}
+            'static': {},
+            'historical': {},
+            'future': {}
         }
+        
+        # Process static variables
+        start_idx = 0
+        for var in config['static_variables']:
+            size = config['static_input_sizes'][var]
+            x['static'][var] = x_static_batch[:, start_idx:start_idx + size]
+            start_idx += size
+        
+        # Process historical variables
+        start_idx = 0
+        for var in config['historical_variables']:
+            size = config['historical_input_sizes'][var]
+            x['historical'][var] = x_historical_batch[:, :, start_idx:start_idx + size]
+            start_idx += size
+        
+        # Process future variables
+        start_idx = 0
+        for var in config['future_variables']:
+            size = config['future_input_sizes'][var]
+            x['future'][var] = x_future_batch[:, :, start_idx:start_idx + size]
+            start_idx += size
+
         optimizer.zero_grad()
         output = model(x)
         loss = custom_loss(
@@ -164,12 +211,35 @@ for epoch in range(num_epochs):
     with torch.no_grad():
         val_loss = 0
         for batch in val_loader:
-            x_static, x_historical, x_future, y = batch
+            x_static_batch, x_historical_batch, x_future_batch, y = batch
+            
             x = {
-                'static': {k: x_static[:, i:i+config['static_input_sizes'][k]] for i, k in enumerate(config['static_variables'])},
-                'historical': {k: x_historical[:, :, i:i+1] for i, k in enumerate(config['historical_variables'])},
-                'future': {k: x_future[:, :, i:i+1] for i, k in enumerate(config['future_variables'])}
+                'static': {},
+                'historical': {},
+                'future': {}
             }
+            
+            # Process static variables
+            start_idx = 0
+            for var in config['static_variables']:
+                size = config['static_input_sizes'][var]
+                x['static'][var] = x_static_batch[:, start_idx:start_idx + size]
+                start_idx += size
+            
+            # Process historical variables
+            start_idx = 0
+            for var in config['historical_variables']:
+                size = config['historical_input_sizes'][var]
+                x['historical'][var] = x_historical_batch[:, :, start_idx:start_idx + size]
+                start_idx += size
+            
+            # Process future variables
+            start_idx = 0
+            for var in config['future_variables']:
+                size = config['future_input_sizes'][var]
+                x['future'][var] = x_future_batch[:, :, start_idx:start_idx + size]
+                start_idx += size
+
             output = model(x)
             val_loss += custom_loss(
                 model_outputs=output,

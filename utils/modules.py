@@ -165,13 +165,12 @@ class AddNorm(nn.Module):
     '''
     def __init__(self, input_size: int, skip_size: int = None, trainable_add: bool = True):
         super().__init__()
-
         self.input_size = input_size
         self.trainable_add = trainable_add
         self.skip_size = skip_size or input_size
 
         if self.input_size != self.skip_size:
-            self.resample = nn.Linear(self.skip_size, self.input_size)  # Use a linear layer for resampling
+            self.resample = nn.Linear(self.skip_size, self.input_size)
         
         if self.trainable_add:
             self.mask = nn.Parameter(torch.zeros(self.input_size, dtype=torch.float))
@@ -179,25 +178,21 @@ class AddNorm(nn.Module):
         self.norm = nn.LayerNorm(self.input_size)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor):
-        # Resample skip to match input size
+        # Handle feature dimension mismatch
         if self.input_size != self.skip_size:
             skip = self.resample(skip)
 
-        # Ensure x and skip have the same sequence length
-        if x.dim() > 1 and skip.dim() > 1 and x.size(1) != skip.size(1):
-            if skip.size(1) == 1:
-                skip = skip.expand(-1, x.size(1), -1)  # Expand skip to match x's sequence length
-            elif x.size(1) == 1:
-                x = x.expand(-1, skip.size(1), -1)  # Expand x to match skip's sequence length
-            else:
-                raise ValueError(f"Sequence length mismatch: x has size {x.size()} but skip has size {skip.size()}")
+        # Handle sequence length mismatch only for 3D tensors
+        if len(x.shape) == 3 and len(skip.shape) == 3 and x.size(1) != skip.size(1):
+            x = F.interpolate(
+                x.transpose(1, 2),
+                size=skip.size(1),
+                mode='linear',
+                align_corners=True
+            ).transpose(1, 2)
 
         if self.trainable_add:
             skip = skip * self.gate(self.mask) * 2.0
-
-        # Ensure x and skip have the same feature dimensions
-        if x.size(-1) != skip.size(-1):
-            raise ValueError(f"Feature dimension mismatch: x has size {x.size()} but skip has size {skip.size()}")
 
         output = self.norm(x + skip)
         return output
@@ -235,12 +230,12 @@ class GateAddNorm(nn.Module):
 class GatedResidualNetwork(nn.Module):
     def __init__(
             self,
-            input_size:int,
+            input_size: int,
             hidden_size: int,
-            output_size:int,
-            dropout: float=0.1,
-            context_size: int=None,
-            residual: bool=False
+            output_size: int,
+            dropout: float = 0.1,
+            context_size: int = None,
+            residual: bool = False
     ):
         super().__init__()
         self.input_size = input_size
@@ -250,13 +245,9 @@ class GatedResidualNetwork(nn.Module):
         self.dropout = dropout
         self.residual = residual
 
+        # Ensure consistent dimensions throughout the network
         if self.input_size != self.output_size and not self.residual:
-            residual_size = self.input_size
-        else:
-            residual_size = self.output_size
-
-        if self.output_size != residual_size:
-            self.resample_norm = ResampleNorm(residual_size, self.output_size)
+            self.resample_norm = ResampleNorm(self.input_size, self.output_size)
 
         self.fc1 = nn.Linear(self.input_size, self.hidden_size)
         self.elu = nn.ELU()
@@ -264,15 +255,15 @@ class GatedResidualNetwork(nn.Module):
         if self.context_size is not None:
             self.context = nn.Linear(self.context_size, self.hidden_size, bias=False)
 
-        self.fc2 = nn.Linear(self.hidden_size, self.hidden_size)
+        self.fc2 = nn.Linear(self.hidden_size, self.output_size)
         self.init_weights()
 
         self.gate_norm = GateAddNorm(
-            input_size = self.hidden_size,
-            skip_size = self.output_size,
-            hidden_size = self.output_size,
-            dropout = self.dropout,
-            trainable_add = False
+            input_size=self.output_size,
+            hidden_size=self.output_size,
+            skip_size=self.output_size,
+            dropout=self.dropout,
+            trainable_add=False
         )
 
     def init_weights(self):
@@ -288,15 +279,28 @@ class GatedResidualNetwork(nn.Module):
         if residual is None:
             residual = x
 
+        # Handle dimension differences
         if self.input_size != self.output_size and not self.residual:
             residual = self.resample_norm(residual)
 
+        # Main network operations
         x = self.fc1(x)
         if context is not None:
             context = self.context(context)
             x = x + context
         x = self.elu(x)
         x = self.fc2(x)
+
+        # Handle sequence length differences before gate_norm
+        if len(x.shape) == 3 and len(residual.shape) == 3 and x.size(1) != residual.size(1):
+            # Only interpolate if dealing with 3D tensors (temporal data)
+            x = F.interpolate(
+                x.transpose(1, 2),
+                size=residual.size(1),
+                mode='linear',
+                align_corners=True
+            ).transpose(1, 2)
+
         x = self.gate_norm(x, residual)
         return x
     
@@ -559,10 +563,30 @@ class StaticCovariateEncoder(nn.Module):
     '''
     def __init__(self, input_size: int, hidden_size: int, output_size: int, dropout: float = 0.1):
         super().__init__()
-        self.grn_cs = GatedResidualNetwork(input_size, hidden_size, output_size, dropout)
-        self.grn_ce = GatedResidualNetwork(input_size, hidden_size, output_size, dropout)
-        self.grn_cc = GatedResidualNetwork(input_size, hidden_size, output_size, dropout)
-        self.grn_ch = GatedResidualNetwork(input_size, hidden_size, output_size, dropout)
+        self.grn_cs = GatedResidualNetwork(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=output_size,
+            dropout=dropout
+        )
+        self.grn_ce = GatedResidualNetwork(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=output_size,
+            dropout=dropout
+        )
+        self.grn_cc = GatedResidualNetwork(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=output_size,
+            dropout=dropout
+        )
+        self.grn_ch = GatedResidualNetwork(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            output_size=output_size,
+            dropout=dropout
+        )
 
     def forward(self, x):
         cs = self.grn_cs(x)

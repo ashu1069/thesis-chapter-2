@@ -16,9 +16,14 @@ class TemporalFusionTransformer(nn.Module):
     8. Project the decoder output to the final output size
     '''
     def __init__(self, config):
-        super(TemporalFusionTransformer, self).__init__()
+        super().__init__()
         
-        # Initialize components
+        # Add dimension checks
+        assert config['hidden_size'] % config['nhead'] == 0, "hidden_size must be divisible by nhead"
+        assert config['hidden_size'] == config['lstm_hidden_size'], "hidden_size must match lstm_hidden_size"
+        assert config['hidden_size'] == config['context_size'], "hidden_size must match context_size"
+        
+        # Initialize components with consistent dimensions
         self.static_covariates_encoder = VariableSelectionNetwork(
             input_sizes=config['static_input_sizes'],
             hidden_size=config['hidden_size'],
@@ -80,6 +85,18 @@ class TemporalFusionTransformer(nn.Module):
         self.config = config  # Store config
 
     def forward(self, x):
+        # Add shape assertions
+        for name, tensor in x['static'].items():
+            assert len(tensor.shape) == 2, f"Static input {name} must be 2D [batch, features]"
+            
+        for name, tensor in x['historical'].items():
+            assert len(tensor.shape) == 3, f"Historical input {name} must be 3D [batch, time, features]"
+            assert tensor.size(1) == self.config['historical_length'], f"Historical input {name} must have {self.config['historical_length']} time steps"
+            
+        for name, tensor in x['future'].items():
+            assert len(tensor.shape) == 3, f"Future input {name} must be 3D [batch, time, features]"
+            assert tensor.size(1) == self.config['forecast_length'], f"Future input {name} must have {self.config['forecast_length']} time steps"
+            
         # Encode static covariates
         static_encoder_output, static_weights = self.static_covariates_encoder(x['static'])
         

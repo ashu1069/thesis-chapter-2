@@ -3,73 +3,24 @@ import torch.nn.functional as F
 
 def custom_loss(model_outputs, targets, objective_weights):
     """
-    Custom loss function aligned with the TFT architecture and objective structure.
-    
     Args:
-        model_outputs (dict): Contains:
-            - objective_outputs (dict): 
-                - individual_scores (dict): Scores for each objective
-                - equity_score (tensor): Score for equitable distribution
-                - weighted_scores (dict): Weighted objective scores
-                - final_score (tensor): Combined final score
-            - weights (dict):
-                - static (tensor): Feature weights for static variables
-                - historical (tensor): Feature weights for historical variables
-                - future (tensor): Feature weights for future variables
-        targets (tensor): Target values for each objective [batch_size, num_objectives]
-        objective_weights (list): Weights for each objective from config
-        
-    Returns:
-        torch.Tensor: Combined loss value
+        model_outputs (dict): Contains 'objective_outputs' tensor of shape [batch_size, num_objectives]
+        targets (tensor): Shape [batch_size, num_objectives]
+        objective_weights (list): Weights for each objective
     """
-    # 1. Objective-specific prediction loss
-    prediction_loss = 0.0
-    for i, (objective, score) in enumerate(model_outputs['objective_outputs']['individual_scores'].items()):
-        if objective != 'Promote Equitable Distribution':
-            prediction_loss += objective_weights[i] * F.mse_loss(score, targets[:, i])
-
-    # 2. Feature selection regularization
-    feature_reg_loss = 0.0
-    for weight_type, weights in model_outputs['weights'].items():
-        # Encourage sparse but meaningful feature selection
-        feature_reg_loss += torch.mean(torch.abs(weights)) * 0.01  # L1 regularization
-        # Ensure weights sum to approximately 1
-        feature_reg_loss += torch.abs(weights.sum(dim=-1).mean() - 1.0) * 0.1
-
-    # 3. Temporal consistency loss for historical and future weights
-    temporal_consistency_loss = 0.0
-    if 'historical' in model_outputs['weights'] and 'future' in model_outputs['weights']:
-        historical_weights = model_outputs['weights']['historical']
-        future_weights = model_outputs['weights']['future']
-        
-        # Ensure smooth transitions between historical and future weights
-        if historical_weights.size(-1) > 1 and future_weights.size(-1) > 1:
-            historical_diffs = historical_weights[:, 1:] - historical_weights[:, :-1]
-            future_diffs = future_weights[:, 1:] - future_weights[:, :-1]
-            
-            temporal_consistency_loss = (
-                torch.mean(torch.abs(historical_diffs)) + 
-                torch.mean(torch.abs(future_diffs))
-            ) * 0.1
-
-    # 4. Equity consideration
-    equity_loss = 0.0
-    if 'equity_score' in model_outputs['objective_outputs']:
-        equity_target = torch.ones_like(model_outputs['objective_outputs']['equity_score'])
-        equity_loss = F.mse_loss(
-            model_outputs['objective_outputs']['equity_score'],
-            equity_target
-        ) * 0.2
-
-    # Combine all losses
-    total_loss = (
-        prediction_loss +
-        feature_reg_loss +
-        temporal_consistency_loss +
-        equity_loss
-    )
-
-    return total_loss
+    assert len(objective_weights) == targets.size(1), "Number of weights must match number of objectives"
+    
+    # Convert weights to tensor
+    weights = torch.tensor(objective_weights, device=targets.device)
+    
+    # Ensure model outputs and targets have same shape
+    outputs = model_outputs['objective_outputs']
+    assert outputs.shape == targets.shape, f"Output shape {outputs.shape} must match target shape {targets.shape}"
+    
+    # Calculate weighted MSE loss
+    loss = torch.sum(weights * torch.mean((outputs - targets) ** 2, dim=0))
+    
+    return loss
 
 def calculate_objective_correlations(feature_weights, config):
     """

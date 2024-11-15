@@ -44,39 +44,34 @@ class DiseaseDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
+        # Ensure static data is 2D: [batch_size, features]
         static_sample = self.static_data[self.static_vars].iloc[idx].values
+        static_tensor = torch.tensor(static_sample, dtype=torch.float).view(1, -1)
+
+        # Ensure temporal data is 3D: [batch_size, time_steps, features]
         known_sample = self.known_data[self.known_vars].iloc[idx].values
+        known_tensor = torch.tensor(known_sample, dtype=torch.float).view(1, -1, len(self.known_vars))
+
         unknown_sample = self.unknown_data[self.unknown_vars].iloc[idx].values
+        unknown_tensor = torch.tensor(unknown_sample, dtype=torch.float).view(1, -1, len(self.unknown_vars))
 
         sample = {
-            'static': torch.tensor(static_sample, dtype=torch.float),
-            'known': torch.tensor(known_sample, dtype=torch.float),
-            'unknown': torch.tensor(unknown_sample, dtype=torch.float)
+            'static': static_tensor,
+            'known': known_tensor,
+            'unknown': unknown_tensor
         }
 
         if self.transform:
             sample = self.transform(sample)
 
-        # Extract targets from unknown data
-        targets = {
-            'objective_targets': {
-                'Maximize Health Impact': self.unknown_data[self.target_vars['health']].iloc[idx],
-                'Maximize Value for Money': self.unknown_data[self.target_vars['value']].iloc[idx],
-                'Reinforce Financial Sustainability': self.unknown_data[self.target_vars['sustainability']].iloc[idx],
-                'Support Countries with the Greatest Needs': self.unknown_data[self.target_vars['needs']].iloc[idx],
-            },
-            'equity_target': self.unknown_data[self.target_vars['equity']].iloc[idx]
-        }
-        
-        # Convert targets to tensors
-        targets = {
-            'objective_targets': {
-                k: torch.tensor(v, dtype=torch.float) 
-                for k, v in targets['objective_targets'].items()
-            },
-            'equity_target': torch.tensor(targets['equity_target'], dtype=torch.float)
-        }
-        
+        # Ensure targets are properly shaped
+        targets = torch.tensor([
+            self.unknown_data[self.target_vars['health']].iloc[idx],
+            self.unknown_data[self.target_vars['value']].iloc[idx],
+            self.unknown_data[self.target_vars['sustainability']].iloc[idx],
+            self.unknown_data[self.target_vars['needs']].iloc[idx]
+        ], dtype=torch.float)
+
         return {
             'inputs': sample,
             'targets': targets
@@ -92,9 +87,9 @@ config = DataConfig(
 )
 
 # Define file paths
-static_file = "/home/stu12/s11/ak1825/hsel/static_data/static_data_COVID-19.csv"
-known_file = "/home/stu12/s11/ak1825/hsel/time_dependent_known/time_dependent_known_data_COVID-19.csv"
-unknown_file = "/home/stu12/s11/ak1825/hsel/time_dependent_unknown/time_dependent_unknown_data_COVID-19.csv"
+static_file = "static_data_COVID-19.csv"
+known_file = "time_dependent_known_data_COVID-19.csv"
+unknown_file = "time_dependent_unknown_data_COVID-19.csv"
 
 # Create dataset
 dataset = DiseaseDataset(static_file, known_file, unknown_file, config)
