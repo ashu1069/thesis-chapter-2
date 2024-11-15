@@ -1,4 +1,3 @@
-
 class VaccinePrioritization:
     def __init__(self):
         self.static_var_list = [
@@ -106,3 +105,11 @@ class DataConfig:
     def __repr__(self):
         return f"DataConfig({self.config})"
     
+
+class VaccineData:
+    # ... existing variables ...
+    HEALTH_TARGET_VAR = 'health_impact'
+    VALUE_TARGET_VAR = 'value_for_money'
+    SUSTAINABILITY_TARGET_VAR = 'financial_sustainability'
+    NEEDS_TARGET_VAR = 'country_needs'
+    EQUITY_TARGET_VAR = 'equity_score'

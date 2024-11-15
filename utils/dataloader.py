@@ -28,6 +28,15 @@ class DiseaseDataset(Dataset):
         self.known_vars = config.get_variable('TIME_KNOWN_VAR_LIST')
         self.unknown_vars = config.get_variable('TIME_UNKNOWN_VAR_LIST')
 
+        # Add these new lines to store target variables
+        self.target_vars = {
+            'health': config.get_variable('HEALTH_TARGET_VAR'),
+            'value': config.get_variable('VALUE_TARGET_VAR'),
+            'sustainability': config.get_variable('SUSTAINABILITY_TARGET_VAR'),
+            'needs': config.get_variable('NEEDS_TARGET_VAR'),
+            'equity': config.get_variable('EQUITY_TARGET_VAR')
+        }
+
     def __len__(self):
         return len(self.known_data)
 
@@ -48,14 +57,24 @@ class DiseaseDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
 
+        # Extract targets from unknown data
         targets = {
             'objective_targets': {
-                'Maximize Health Impact': health_target,
-                'Maximize Value for Money': value_target,
-                'Reinforce Financial Sustainability': sustainability_target,
-                'Support Countries with the Greatest Needs': needs_target,
+                'Maximize Health Impact': self.unknown_data[self.target_vars['health']].iloc[idx],
+                'Maximize Value for Money': self.unknown_data[self.target_vars['value']].iloc[idx],
+                'Reinforce Financial Sustainability': self.unknown_data[self.target_vars['sustainability']].iloc[idx],
+                'Support Countries with the Greatest Needs': self.unknown_data[self.target_vars['needs']].iloc[idx],
             },
-            'equity_target': equity_target
+            'equity_target': self.unknown_data[self.target_vars['equity']].iloc[idx]
+        }
+        
+        # Convert targets to tensors
+        targets = {
+            'objective_targets': {
+                k: torch.tensor(v, dtype=torch.float) 
+                for k, v in targets['objective_targets'].items()
+            },
+            'equity_target': torch.tensor(targets['equity_target'], dtype=torch.float)
         }
         
         return {

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from modules import VariableSelectionNetwork, StaticCovariateEncoder, StaticEnrichmentLayer, TemporalSelfAttentionLayer, PositionwiseFeedforwardLayer, TemporalFusionDecoder, SequenceToSequenceLayer, ObjectiveLayer
+from utils.modules import VariableSelectionNetwork, StaticCovariateEncoder, StaticEnrichmentLayer, TemporalSelfAttentionLayer, PositionwiseFeedforwardLayer, TemporalFusionDecoder, SequenceToSequenceLayer, ObjectiveLayer
 
 class TemporalFusionTransformer(nn.Module):
     '''
