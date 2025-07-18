@@ -109,6 +109,8 @@ class TemporalFusionTransformer(nn.Module):
         # Encode future inputs
         future_inputs, future_weights = self.future_inputs_encoder(x['future'], context=cs)
         
+        print(f"[TFT DEBUG] historical_inputs shape: {historical_inputs.shape}")
+        print(f"[TFT DEBUG] future_inputs shape: {future_inputs.shape}")
         # Combine historical and future inputs
         temporal_inputs = torch.cat([historical_inputs, future_inputs], dim=1)
         
@@ -136,8 +138,21 @@ class TemporalFusionTransformer(nn.Module):
         # Final output layer
         objective_outputs = self.output_layer(decoded_output)
         
+        # Prepare tensor for training (stack individual scores)
+        # Only use the four main objectives, not equity
+        objectives_order = [
+            'Maximize Health Impact',
+            'Maximize Value for Money',
+            'Reinforce Financial Sustainability',
+            'Support Countries with the Greatest Needs'
+        ]
+        objective_tensor = torch.cat([
+            objective_outputs['individual_scores'][obj] for obj in objectives_order
+        ], dim=1)  # [batch, 4]
+        
         return {
-            'objective_outputs': objective_outputs,
+            'objective_tensor': objective_tensor,  # for training
+            'objective_dict': objective_outputs,   # for interpretability
             'weights': {
                 'static': static_weights,
                 'historical': historical_weights,

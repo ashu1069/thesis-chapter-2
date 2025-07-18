@@ -124,7 +124,7 @@ class GatedLinearUnit(nn.Module):
         if self.dropout is not None:
             x = self.dropout(x)
         x = self.fc(x)
-        x = F.glu(x, dim=1)
+        x = F.glu(x, dim=-1)
         return x
     
 class ResampleNorm(nn.Module):
@@ -171,6 +171,8 @@ class AddNorm(nn.Module):
 
         if self.input_size != self.skip_size:
             self.resample = nn.Linear(self.skip_size, self.input_size)
+        # Add projection for runtime shape mismatch
+        self.dynamic_proj = None
         
         if self.trainable_add:
             self.mask = nn.Parameter(torch.zeros(self.input_size, dtype=torch.float))
@@ -193,6 +195,15 @@ class AddNorm(nn.Module):
 
         if self.trainable_add:
             skip = skip * self.gate(self.mask) * 2.0
+
+        # Project skip at runtime if feature dims still don't match
+        if skip.shape[-1] != x.shape[-1]:
+            if not hasattr(self, '_runtime_proj') or self._runtime_proj.in_features != skip.shape[-1] or self._runtime_proj.out_features != x.shape[-1]:
+                self._runtime_proj = nn.Linear(skip.shape[-1], x.shape[-1]).to(skip.device)
+            skip = self._runtime_proj(skip)
+            # Re-initialize LayerNorm if feature size changed
+            if self.norm.normalized_shape != (x.shape[-1],):
+                self.norm = nn.LayerNorm(x.shape[-1]).to(x.device)
 
         output = self.norm(x + skip)
         return output
@@ -285,7 +296,7 @@ class GatedResidualNetwork(nn.Module):
 
         # Main network operations
         x = self.fc1(x)
-        if context is not None:
+        if hasattr(self, 'context') and context is not None:
             context = self.context(context)
             x = x + context
         x = self.elu(x)
@@ -333,11 +344,12 @@ class VariableSelectionNetwork(nn.Module):
 
         # It sets up a GatedResidualNetwork for combining multiple variables if there are more than one.
         if self.num_inputs > 1:
+            # Ensure output_size and skip_size match num_inputs for flattened_grn
             if self.context_size is not None:
                 self.flattened_grn = GatedResidualNetwork(
                     self.input_size_total,
-                    min(self.hidden_size, self.num_inputs),
-                    self.num_inputs,
+                    self.num_inputs,  # hidden_size
+                    self.num_inputs,  # output_size
                     self.dropout,
                     self.context_size,
                     residual=False
@@ -345,8 +357,8 @@ class VariableSelectionNetwork(nn.Module):
             else:
                 self.flattened_grn = GatedResidualNetwork(
                     self.input_size_total,
-                    min(self.hidden_size, self.num_inputs),
-                    self.num_inputs,
+                    self.num_inputs,  # hidden_size
+                    self.num_inputs,  # output_size
                     self.dropout,
                     residual=False
                 )
@@ -398,7 +410,11 @@ class VariableSelectionNetwork(nn.Module):
                 var_outputs.append(processed_var)
             
             # Stack and process variable outputs
-            var_outputs = torch.stack(var_outputs, dim=-2)  # [batch_size, seq_len, num_vars, hidden_size]
+            # If temporal (3D), stack along variable axis to get [batch, time, num_vars, hidden_size]
+            if var_outputs[0].dim() == 3:
+                var_outputs = torch.stack(var_outputs, dim=2)  # [batch, time, num_vars, hidden_size]
+            else:
+                var_outputs = torch.stack(var_outputs, dim=1)  # [batch, num_vars, hidden_size]
             
             # Calculate variable weights
             flat_embedding = torch.cat(weight_inputs, dim=-1)
@@ -406,17 +422,17 @@ class VariableSelectionNetwork(nn.Module):
             sparse_weights = self.softmax(sparse_weights)  # [batch_size, num_vars]
             
             # Add necessary dimensions to match var_outputs
-            if len(var_outputs.shape) == 4:  # For temporal inputs
+            if len(var_outputs.shape) == 4:  # For temporal inputs [batch, seq_len, num_vars, hidden_size]
                 # Reshape sparse_weights to [batch_size, 1, num_vars, 1]
                 sparse_weights = sparse_weights.unsqueeze(1).unsqueeze(-1)
-                # Broadcast multiply
-                outputs = (var_outputs * sparse_weights).sum(dim=2)  # Sum over variables dimension
-            else:  # For static inputs
+                # Weighted sum over num_vars
+                outputs = (var_outputs * sparse_weights).sum(dim=2)  # [batch, seq_len, hidden_size]
+            else:  # For static inputs [batch, num_vars, hidden_size]
                 # Reshape sparse_weights to [batch_size, num_vars, 1]
                 sparse_weights = sparse_weights.unsqueeze(-1)
-                # Broadcast multiply
-                outputs = (var_outputs * sparse_weights).sum(dim=1)  # Sum over variables dimension
-            
+                # Weighted sum over num_vars
+                outputs = (var_outputs * sparse_weights).sum(dim=1)  # [batch, hidden_size]
+                outputs = outputs.unsqueeze(1)  # [batch, 1, hidden_size] for consistency
         else:
             # For one input, don't perform variable selection but just encoding
             name = next(iter(self.single_variable_grns.keys()))
@@ -424,6 +440,9 @@ class VariableSelectionNetwork(nn.Module):
             if name in self.prescalers:
                 variable_embedding = self.prescalers[name](variable_embedding)
             outputs = self.single_variable_grns[name](variable_embedding)
+            # Only unsqueeze for static data (2D to 3D)
+            if outputs.dim() == 2 and variable_embedding.dim() == 2:
+                outputs = outputs.unsqueeze(1)  # [batch, 1, hidden_size]
             sparse_weights = torch.ones(outputs.size(0), 1, 1, device=outputs.device)
 
         return outputs, sparse_weights

@@ -1,0 +1,33 @@
+Objective,Feature,Importance
+Maximize Health Impact,Endemic_Potential_R0,0.084136985
+Maximize Health Impact,Endemic_Potential_Duration,0.084136985
+Maximize Health Impact,Healthcare_Index_Tier_X_hospitals,0.10840073
+Maximize Health Impact,Healthcare_Index_Workforce_capacity,0.08589926
+Maximize Health Impact,Healthcare_Index_Bed_availability_per_capita,0.09843393
+Maximize Health Impact,Immunization_Coverage,0.11540724
+Maximize Health Impact,Frequency_of_outbreaks,0.12243761
+Maximize Health Impact,Magnitude_of_outbreaks_Deaths,0.090780675
+Maximize Health Impact,Magnitude_of_outbreaks_Infected,0.10423973
+Maximize Health Impact,Magnitude_of_outbreaks_Severity_Index,0.10612683
+Maximize Value for Money,Economic_Index_Budget_allocation_per_capita,0.17406404
+Maximize Value for Money,Economic_Index_Fraction_of_total_budget,0.1780252
+Maximize Value for Money,Healthcare_Index_Expenditure_per_capita,0.15586898
+Maximize Value for Money,Socio_economic_GDP_per_capita,0.16401392
+Maximize Value for Money,Socio_economic_Employment_Rates,0.16401392
+Maximize Value for Money,Socio_economic_Education_Levels,0.16401392
+Reinforce Financial Sustainability,Economic_Index_Budget_allocation_per_capita,0.12238971
+Reinforce Financial Sustainability,Economic_Index_Fraction_of_total_budget,0.1243247
+Reinforce Financial Sustainability,Healthcare_Index_Expenditure_per_capita,0.1332296
+Reinforce Financial Sustainability,Socio_economic_GDP_per_capita,0.1234338
+Reinforce Financial Sustainability,Socio_economic_Employment_Rates,0.1234338
+Reinforce Financial Sustainability,Socio_economic_Poverty_Rates,0.1234338
+Reinforce Financial Sustainability,Political_Stability_Index,0.12632082
+Reinforce Financial Sustainability,Communication_Affordability,0.1234338
+Support Countries with the Greatest Needs,Demography_Urban_Rural_Split,0.110090226
+Support Countries with the Greatest Needs,Demography_Population_Density,0.110090226
+Support Countries with the Greatest Needs,Environmental_Index,0.110090226
+Support Countries with the Greatest Needs,Socio_economic_Gini_Index,0.110090226
+Support Countries with the Greatest Needs,Socio_economic_Poverty_Rates,0.110090226
+Support Countries with the Greatest Needs,Healthcare_Index_Bed_availability_per_capita,0.15921137
+Support Countries with the Greatest Needs,Political_Stability_Index,0.11891586
+Support Countries with the Greatest Needs,Security_and_Conflict_Index,0.17142168

@@ -15,7 +15,6 @@ class CFR():
     def m_step(self, expected_deaths_from_unknown, alpha):
         new_cfr = (alpha*self.d + (1-alpha)*expected_deaths_from_unknown)/self.n
         return new_cfr
-       
 
     def log_likelihood(self):
         if self.cfr == 0 or self.cfr == 1:
@@ -24,23 +23,15 @@ class CFR():
         return log_likelihood
 
     def fit(self, tol=1e-6, max_iter=100):
-        """Fit the model to the data using the EM algorithm."""
         log_likelihood_old = self.log_likelihood()
         for i in range(max_iter):
             expected_deaths_from_unknown = self.e_step()
             new_cfr = self.m_step(expected_deaths_from_unknown)
             self.cfr = new_cfr
             log_likelihood_new = self.log_likelihood()
-
-            print(f"Iteration {i+1}:")
-            print(f"  Expected deaths from unknown outcomes: {expected_deaths_from_unknown:.4f}")
-            print(f"  Updated CFR: {self.cfr:.4f}")
-
             if np.abs(log_likelihood_new - log_likelihood_old) < tol:
-                print(f"Converged after {i+1} iterations.")
                 break
             log_likelihood_old = log_likelihood_new
-        
         return self.cfr
 
 # # Example usage:
@@ -69,30 +60,15 @@ class R0():
     def m_step(self, expected_secondary_infections):
         new_R0 = np.sum(expected_secondary_infections)/np.sum(self.I)
         return new_R0
-       
-
-    def log_likelihood(self):
-        if self.cfr == 0 or self.cfr == 1:
-            return -np.inf
-        log_likelihood = self.d * np.log(self.cfr) + (self.n - self.d) * np.log(1 - self.cfr)
-        return log_likelihood
 
     def fit(self, tol=1e-6, max_iter=100):
-        """Fit the model to the data using the EM algorithm."""
         for i in range(max_iter):
             expected_secondary_infections = self.e_step()
             new_R0 = self.m_step(expected_secondary_infections)
-            print(f"Iteration {i+1}:")
-            print(f"Expected secondary infections: {expected_secondary_infections}")
-            print(f"Updated R0: {new_R0:.4f}")
-
             if np.abs(new_R0 - self.R0) < tol:
-                print(f"Converged after {i+1} iterations.")
                 break
             self.R0 = new_R0
-        
         return self.R0
-    
 
 # # Infection over time
 # infections = [10, 20, 25, 30, 40, 45]

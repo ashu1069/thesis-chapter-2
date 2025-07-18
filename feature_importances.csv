@@ -1,0 +1,7 @@
+Objective,Feature,Importance
+Maximize Health Impact,Endemic_Potential_R0,0.16750927
+Maximize Health Impact,Endemic_Potential_Duration,0.16750927
+Maximize Health Impact,Healthcare_Index_Tier_X_hospitals,0.26351124
+Maximize Health Impact,Healthcare_Index_Workforce_capacity,0.16779429
+Maximize Health Impact,Healthcare_Index_Bed_availability_per_capita,0.23367593
+Support Countries with the Greatest Needs,Healthcare_Index_Bed_availability_per_capita,1.0

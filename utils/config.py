@@ -32,7 +32,6 @@ class VaccineData:
         'Security_and_Conflict_Index'
     ]
 
-    # Add feature-objective mapping
     FEATURE_OBJECTIVE_MAPPING = {
         'Maximize Health Impact': [
             'Endemic_Potential_R0', 'Endemic_Potential_Duration', 
@@ -65,13 +64,10 @@ class DataConfig:
         self.STATIC_VAR_LIST = STATIC_VAR_LIST
         self.TIME_KNOWN_VAR_LIST = TIME_KNOWN_VAR_LIST
         self.TIME_UNKNOWN_VAR_LIST = TIME_UNKNOWN_VAR_LIST
-        
-        # Initialize target variables
         self.HEALTH_TARGET_VAR = VaccineData.FEATURE_OBJECTIVE_MAPPING['Maximize Health Impact']
         self.VALUE_TARGET_VAR = VaccineData.FEATURE_OBJECTIVE_MAPPING['Maximize Value for Money']
         self.SUSTAINABILITY_TARGET_VAR = VaccineData.FEATURE_OBJECTIVE_MAPPING['Reinforce Financial Sustainability']
         self.NEEDS_TARGET_VAR = VaccineData.FEATURE_OBJECTIVE_MAPPING['Support Countries with the Greatest Needs']
-        self.EQUITY_TARGET_VAR = VaccineData.FEATURE_OBJECTIVE_MAPPING['Support Countries with the Greatest Needs']
 
     def get_variable(self, var_name):
         return getattr(self, var_name)
