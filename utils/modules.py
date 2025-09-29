@@ -298,6 +298,18 @@ class GatedResidualNetwork(nn.Module):
         x = self.fc1(x)
         if hasattr(self, 'context') and context is not None:
             context = self.context(context)
+            # Align context to x's temporal dimension if needed
+            if x.dim() == 3:
+                if context.dim() == 2:
+                    context = context.unsqueeze(1).expand(-1, x.size(1), -1)
+                elif context.dim() == 3 and context.size(1) != x.size(1):
+                    # Interpolate context over time to match x's sequence length
+                    context = F.interpolate(
+                        context.transpose(1, 2),
+                        size=x.size(1),
+                        mode='linear',
+                        align_corners=True
+                    ).transpose(1, 2)
             x = x + context
         x = self.elu(x)
         x = self.fc2(x)
@@ -659,7 +671,8 @@ class TemporalSelfAttentionLayer(nn.Module):
         self.glu = GatedLinearUnit(d_model, d_model, dropout)
 
     def forward(self, x, mask=None):
-        attn_output, _ = self.attention(x, x, x, attn_mask=mask)
+        # The underlying attention does not accept attn_mask; ignore mask for now
+        attn_output, _ = self.attention(x, x, x)
         attn_output = self.layer_norm(x + attn_output)
         attn_output = self.glu(attn_output)
         return attn_output
@@ -742,8 +755,9 @@ class ObjectiveLayer(nn.Module):
         }
 
         # Initialize feature weights for each objective
+        # Use input_size for all feature weights to match hidden state dimension
         self.feature_weights = nn.ParameterDict({
-            objective: nn.Parameter(torch.rand(len(features))) 
+            objective: nn.Parameter(torch.rand(input_size)) 
             for objective, features in self.feature_mappings.items()
             if len(features) > 0  # Skip empty feature lists
         })

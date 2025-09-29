@@ -20,9 +20,9 @@ class DiseaseDataset(Dataset):
         self.unknown_data = pd.read_csv(unknown_file)
         
         # Extract variable lists from config
-        self.static_vars = config.get_variable('STATIC_VAR_LIST')
-        self.known_vars = config.get_variable('TIME_KNOWN_VAR_LIST')
-        self.unknown_vars = config.get_variable('TIME_UNKNOWN_VAR_LIST')
+        self.static_vars = config.STATIC_VAR_LIST
+        self.known_vars = config.TIME_KNOWN_VAR_LIST
+        self.unknown_vars = config.TIME_UNKNOWN_VAR_LIST
 
         # Add these new lines to store target variables
         self.target_columns = [
@@ -68,7 +68,7 @@ class DiseaseDataset(Dataset):
 
     def __len__(self):
         # Return number of possible windows of length 5
-        return min(len(self.known_data), len(self.unknown_data)) - 5 + 1
+        return min(len(self.known_data), len(self.unknown_data), len(self.static_data)) - 5 + 1
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -76,15 +76,15 @@ class DiseaseDataset(Dataset):
 
         # Static data: repeat the same static row for the window
         static_sample = self.static_data[self.static_vars].iloc[idx].values
-        static_tensor = torch.tensor(static_sample, dtype=torch.float).view(1, -1)
+        static_tensor = torch.tensor(static_sample, dtype=torch.float32).view(1, -1)
         static_tensor = static_tensor.repeat(5, 1)  # [5, static_features]
 
         # Temporal data: get a window of 5 time steps
         known_window = self.known_data[self.known_vars].iloc[idx:idx+5].values
-        known_tensor = torch.tensor(known_window, dtype=torch.float)  # [5, known_features]
-
+        known_tensor = torch.tensor(known_window, dtype=torch.float32)  # [5, known_features]
+        
         unknown_window = self.unknown_data[self.unknown_vars].iloc[idx:idx+5].values
-        unknown_tensor = torch.tensor(unknown_window, dtype=torch.float)  # [5, unknown_features]
+        unknown_tensor = torch.tensor(unknown_window, dtype=torch.float32)  # [5, unknown_features]
 
         sample = {
             'static': static_tensor,   # [5, static_features]
@@ -93,9 +93,13 @@ class DiseaseDataset(Dataset):
         }
 
         # Targets: use the last time step in the window
-        targets = torch.tensor(self.unknown_data[self.target_columns].iloc[idx+4].values, dtype=torch.float)
+        targets = torch.tensor(self.unknown_data[self.target_columns].iloc[idx+4].values, dtype=torch.float32)
+        
+        # Denormalize targets for training (model outputs raw values)
+        targets_denorm = targets * self.target_stds.values + self.target_means.values
+        targets_denorm = targets_denorm.clone().detach().float()
 
         return {
             'inputs': sample,
-            'targets': targets
+            'targets': targets_denorm
         }

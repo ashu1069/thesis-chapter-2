@@ -109,9 +109,12 @@ class TemporalFusionTransformer(nn.Module):
         # Encode future inputs
         future_inputs, future_weights = self.future_inputs_encoder(x['future'], context=cs)
         
-        print(f"[TFT DEBUG] historical_inputs shape: {historical_inputs.shape}")
-        print(f"[TFT DEBUG] future_inputs shape: {future_inputs.shape}")
         # Combine historical and future inputs
+        # If encoders returned per-variable dimension, reduce over it
+        if historical_inputs.dim() == 4:  # [batch, time, num_vars, hidden]
+            historical_inputs = historical_inputs.sum(dim=2)
+        if future_inputs.dim() == 4:
+            future_inputs = future_inputs.sum(dim=2)
         temporal_inputs = torch.cat([historical_inputs, future_inputs], dim=1)
         
         # Apply static enrichment
@@ -124,14 +127,26 @@ class TemporalFusionTransformer(nn.Module):
         processed_inputs = self.position_wise_feed_forward(attended_inputs)
         
         # Prepare initial hidden and cell states
-        encoder_hidden = ch.unsqueeze(0).repeat(self.config['num_layers'], 1, 1)
-        encoder_cell = cc.unsqueeze(0).repeat(self.config['num_layers'], 1, 1)
+        # Ensure hidden and cell are [layers, batch, hidden]
+        num_layers = self.config['num_lstm_layers'] if 'num_lstm_layers' in self.config else self.config.get('num_layers', 1)
+        # Collapse potential temporal dimension in ch/cc
+        if ch.dim() == 3:
+            ch = ch[:, -1, :]
+        if cc.dim() == 3:
+            cc = cc[:, -1, :]
+        if ch.dim() == 1:
+            ch = ch.unsqueeze(0)
+        if cc.dim() == 1:
+            cc = cc.unsqueeze(0)
+        encoder_hidden = ch.unsqueeze(0).repeat(num_layers, 1, 1)
+        encoder_cell = cc.unsqueeze(0).repeat(num_layers, 1, 1)
         
-        # Temporal Fusion Decoder
-        decoded_output = self.temporal_fusion_decoder(
-            processed_inputs, 
-            {'ce': ce},  # Static context for enrichment
-            encoder_hidden, 
+        # Temporal Fusion Decoder expects (x, future_inputs, static_contexts, encoder_hidden, encoder_cell)
+        decoded_output, _, _ = self.temporal_fusion_decoder(
+            historical_inputs,  # use historical as encoder input
+            future_inputs,      # use future inputs separately
+            ce,                 # static context
+            encoder_hidden,
             encoder_cell
         )
         
